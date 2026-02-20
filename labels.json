@@ -1,0 +1,9 @@
+{
+  "iou_threshold": 0.45,
+  "detection_threshold": 0.20,
+  "output_activation": "none",
+  "label_offset": 1,
+  "max_boxes": 200,
+  "classes": 2,
+  "labels": ["unlabeled", "line_dashed", "line_solid"]
+}
