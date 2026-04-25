@@ -36,10 +36,10 @@ PROCESS_W     = 640
 VIZ_SKIP      = 2
 
 # -- Crop ---------------------------------------------------------
-CROP_DIV      = 5
+CROP_DIV      = 7   # 5'ten 7'ye cikarildi -> Ufuktan daha az piksel kesilecek, daha ileri gorulecek
 
 # -- Parlaklik Esigi ----------------------------------------------
-BRIGHT_THR    = 190
+BRIGHT_THR    = 170
 
 # -- Zemin Turu ---------------------------------------------------
 LIGHT_LINE_ON_DARK = True
@@ -63,13 +63,15 @@ BLUR_KERNEL = 9
 
 # GERCEK ISLEME BOYUTU: 640 x 288 (1280x720 kameranin crop edilmis hali)
 # Sira: sol-ust, sag-ust, sag-alt, sol-alt
-# -- BEV Perspektif Donusumu --
 BEV_SRC = np.float32([
-    [ 118,   13],   # Sol - Ust
-    [ 601,    9],   # Sag - Ust
-    [ 957,  275],   # Sag - Alt
-    [-184,  275],   # Sol - Alt
+    [ 159,   18],   # Sol - Ust
+    [ 510,   20],   # Sag - Ust
+    [ 700,  240],   # Sag - Alt
+    [-150,  240],   # Sol - Alt
 ])
+
+
+
 
 
 # Hedef dikdortgen (BEV ciktisi)
@@ -91,42 +93,65 @@ HIST_SMOOTH    = 15     # histogram yumusatma kernel boyutu
 
 # -- Histogram Peak Clustering (| || | yol yapisi) ----------------
 # Birbirine yakin peak'leri (orta cift cizgi ||) birlestir
-PEAK_CLUSTER_GAP   = 60    # px - || cift cizgiyi her zaman tek cluster olarak birlestir
-PEAK_MIN_HEIGHT    = 500   # histogram peak minimum yuksekligi
+PEAK_CLUSTER_GAP   = 140   # px - || cift cizgiyi her zaman tek cluster olarak birlestir (90->140: genis || viraj cikisi)
+PEAK_MIN_HEIGHT    = 300   # histogram peak minimum yuksekligi
 
 # -- Serit Hafizasi -----------------------------------------------
-DEFAULT_LANE_WIDTH_PX = 160   # BEV'de beklenen serit genisligi (px) — yeni BEV: 200*0.818=163→160
+DEFAULT_LANE_WIDTH_PX = 160   # BEV'de beklenen serit genisligi (px)
 LANE_WIDTH_ALPHA      = 0.10  # serit genisligi EMA katsayisi
 MAX_LANE_WIDTH_CHANGE = 80    # frame'ler arasi max genislik degisimi (px)
-MIN_LANE_WIDTH_PX     = 100   # Iki serit arasi minimum mesafe — yeni BEV: 130*0.818=106→100
+MIN_LANE_WIDTH_PX     = 140   # Iki serit arasi minimum mesafe (100->140: ||'yi ayri serit saymasini engeller)
 MAX_LANE_WIDTH_PX     = 380   # Iki serit arasi maximum mesafe — kamera kenar→kenar yeni BEV ≈366px
-STRICT_PAIR_MIN_GAP_PX = 120  # || ciftinin iki cizgisini sahte dual lane saymamak icin katı alt sinir
+STRICT_PAIR_MIN_GAP_PX = 150  # || cift cizgi korumasi (120->150: sol/sag serit bu mesafenin altinda olamaz)
 
 # -- Polinom Stabilizasyonu ---------------------------------------
 POLY_ALPHA     = 0.85   # polinom EMA — 0.90 -> 0.85: curvature gercek zamanli takip etsin
-MAX_POLY_JUMP  = 200    # px - polinom base x fark esigi (virajda daha toleransli)
+MAX_POLY_JUMP  = 240    # px - polinom base x fark esigi (virajda daha toleransli)
 
 # -- Serit Yeniden Bulma ------------------------------------------
 REACQ_MIN_SEPARATION = 80   # px - yeniden bulma minimum ayirimi — yeni BEV: 100*0.818=82→80
 REACQ_EXPECTED_MARGIN = 90   # px - kayip tarafta beklenen x etrafinda tek-peak reacquire toleransi
 
+# -- Tek-Serit Modunda || Peak Birlestirme (Single-Mode Guard) ----
+# Virajda BEV warping || iki dash'ini PEAK_CLUSTER_GAP ustune cikarabilir;
+# ayri iki cluster olarak cikinca sistem yanlislikla dual moda giriyor.
+# Cozum: tek taraf biliniyorken (single mode) bilinen referansa yakin tum
+# peak'leri tek cluster'a indir — gercek ikinci serit referanstan UZAK olacagi
+# icin korunur, || yarisi ise YAKIN oldugu icin birlestirilir.
+SINGLE_MODE_CLUSTER_EXPAND = 110  # px — bilinen x etrafinda birlestirilecek peak yaricicapi
+
 # -- PID Kazanclari -----------------------------------------------
-Kp = 2.80
-Ki = 0.03
+# Kucuk sasi dengesi:
+#   Kp dusuk → overshoot azalir
+#   Kd damping → osilasyonu sonder
+#   Ki kucuk → sabit drift telafisi, ama windup yok
+Kp = 1.20
+Ki = 0.05
 Kd = 0.30
-INTEGRAL_LIMIT  = 0.20
-D_FILTER_ALPHA  = 0.65   # 0.50 -> 0.65: D-term viraj girisini hissetsin
+INTEGRAL_LIMIT  = 0.12
+D_FILTER_ALPHA  = 0.40
 
 # -- Deadzone -----------------------------------------------------
-DEADZONE = 0.05   # bev_calibrator.py ile ayarla
+DEADZONE = 0.05
 
 # -- EMA Yumusatma ------------------------------------------------
-ALPHA = 0.60   # 0.70 -> 0.60: error EMA daha hizli, viraj tepkisi gec kalmasin
+ALPHA = 0.75
+
+# -- Persistent Correction Amplifier (PCA) ------------------------
+# Kucuk ama surekli hatalar duzeltilmezse sinyal kademe kademe guclendirilir.
+# Mantik: ayni yon + kucuk sinyal + N frame devamli → carpan artar.
+PCA_SMALL_STEER_THR  = 0.08   # Bu deger altindaki steering "kucuk" sayilir
+PCA_SAME_DIR_FRAMES  = 40     # ~3 sn (13fps'de ~40 frame, 27fps'de ~80 frame de olabilir)
+# once fps degerini dikkate almadan frame sayisi kullanilir — test ile tun edilir
+PCA_MAX_GAIN         = 2.5    # Maksimum carpan (steering * PCA_MAX_GAIN)
+PCA_GAIN_RAMP_FRAMES = 60     # PCA_SAME_DIR_FRAMES'den bu kadar frame'de max gaine ulasilir
 
 # -- Adaptif Hiz --------------------------------------------------
-BASE_SPEED         = 1.0
-MIN_SPEED          = 0.65  # 1.0->0.65: virajda hiz dusmesine izin ver
-SPEED_CURVE_FACTOR = 0.20  # 0.0->0.30: max direksiyonda %30 yavaslama
+# Kucuk sasi: daha yuksek hizda osilasyon artar → BASE_SPEED dusuruldu.
+BASE_SPEED         = 0.45
+MIN_SPEED          = 0.30
+SPEED_CURVE_FACTOR = 0.55
+SPEED_SINGLE_FACTOR = 0.60
 
 # -- Guvenlik -----------------------------------------------------
 NO_LINE_TIMEOUT     = 15
@@ -134,7 +159,7 @@ NO_LINE_SPEED_MULT  = 0.50
 NO_LINE_STEER_DECAY = 0.85
 
 # -- Viraj Hafizasi ------------------------------------------------
-TURN_CURVATURE_ALPHA  = 0.40   # 0.55 -> 0.40: erken donus azaltma
+TURN_CURVATURE_ALPHA  = 0.05   # 0.55 -> 0.40: erken donus azaltma
 TURN_CURVATURE_THR    = 0.0003 # Bu deger uzerinde "virajda" sayilir
 TURN_MEMORY_FRAMES    = 90     # Viraj yonunu bu kadar frame hatirla (~3s) — uzun virajlar icin arttirildi
 SINGLE_LANE_BASE_STEER = 0.35  # Viraj cikisi kurtarma icin (sadece LOST modda kullanilir)
@@ -143,9 +168,14 @@ CLASSIFY_HYSTERESIS    = 30    # px — flip-flop onleme bandi
 TURN_CURVATURE_ALPHA_SINGLE = 0.60  # Single mode curvature hizli guncelleme (0.40->0.60)
 
 # -- Polinom Kalite Kontrolu (Yatay Serit Reddi) -------------------
-FIT_MIN_VERTICAL_SPAN  = 0.30  # Fit en az BEV yuksekliginin %30'unu kapsamali
+FIT_MIN_VERTICAL_SPAN  = 0.10  # Fit en az BEV yuksekliginin %10'unu (40px) kapsamali
 FIT_MAX_HORIZONTAL_RATIO = 3.0 # x_range / y_range > bu deger ise "yatay" — reddet
 FIT_MIN_SLOPE          = 0.3   # Polinom alt noktadaki min |dy/dx| (dikey olmali)
+# Kesik serit bosluk toleransi:
+# Fiziksel: 20cm bosluk, 0.7m/s → 0.29s bosluk suresi.
+# Gercek FPS ≈ 13fps: 0.29s × 13 ≈ 4 frame. 4× guvenlik marji → 15 frame.
+# 27fps durumunda 15 frame = 0.56s → 2× marj (yeterli).
+FIT_MAX_MISS_FRAMES    = 15    # kesik serit bosluklarinda fit dondur (kare)
 
 # -- Yaya Gecidi Filtresi -------------------------------------------
 CROSSING_ROW_DENSITY_THR = 0.45  # Satirin %45'i beyazsa → gecit cizgisi (viraj FP onlemi icin yuksek)
@@ -154,7 +184,9 @@ CROSSING_COOLDOWN        = 30    # Gecit algilandiktan sonra N frame aktif tut
 CROSSING_SPEED           = 0.50  # Gecit algilandiginda hiz
 
 # -- Servo Limitleri ------------------------------------------------
-SERVO_MAX_ANGLE        = 75    # Derece — motor_control.py ile uyumlu (artirildi: 60 → 75)
+# Kucuk sasi: kisa dingil mesafesi → 65° = cok siki donus, asiniri tepkiye yol aciyor.
+# 30° ile PID cikisi 1.0 → 30° fiziksel → makul donus yariçapi.
+SERVO_MAX_ANGLE        = 45    # 65→30: kucuk sasi ayari (viraj yeterli, osilasyon baskili)
 
 
 # +============================================================+
@@ -257,8 +289,12 @@ class TurnTracker:
         a_right = right_fit.coefficients[0] if len(right_fit.coefficients) == 3 else 0
         curvature = (a_left + a_right) / 2.0
 
-        self._curvature = (TURN_CURVATURE_ALPHA * curvature +
-                           (1.0 - TURN_CURVATURE_ALPHA) * self._curvature)
+        # Egrilik EMA — dual moda ilk donuste daha hizli decay (viraj cikisi)
+        # Duz yolda yeni curvature ~0 olacak, bunu hizli hissedelim ki kilit kalkmaya baslasin
+        was_in_turn = abs(self._curvature) > TURN_CURVATURE_THR
+        dual_alpha = 0.20 if was_in_turn else TURN_CURVATURE_ALPHA
+        self._curvature = (dual_alpha * curvature +
+                           (1.0 - dual_alpha) * self._curvature)
 
         # Viraj yonu belirle
         if abs(self._curvature) > TURN_CURVATURE_THR:
@@ -297,7 +333,7 @@ class TurnTracker:
     # Kilit virayin ortasinda acilip || yanlis tarafa ataniyor → arac yanlıs yone gidiyor.
     # COZUM: 150 frame (~5s) — dual moda donulunce zaten hemen sifirlanir (update_dual)
     LOCK_TIMEOUT_FRAMES = 45  # ~1.5s (30fps) — viraj sonu daha hizli yeniden degerlendirsin (phantom kalmasin)
-    SINGLE_HARD_LOCK_FRAMES = 90  # Single moda geciste taraf kilidini katı tut
+    SINGLE_HARD_LOCK_FRAMES = 30  # Viraj cikisinda daha hizli yeniden siniflandirma (90→30)
     # Dual mod pozisyon tiebreaker zaten dogru siniflandirma yapiyor
 
     def classify_single_lane(self, visible_fit, bev_h, bev_w, tracker_hint=None):
@@ -322,7 +358,6 @@ class TurnTracker:
 
         # Dual mod pozisyonlari varsa DAIMA onlari kullan — bev_w/2 kiyasina gitme
         # Arac virajda konum kaydirmis olabilir; bev_w/2 referansi yanlis sonuc uretir
-        # Bu ozellikle virajlar arasi geciste ikinci viraj flip sorununu cozuyor
         if self._last_left_base_x is not None and self._last_right_base_x is not None:
             dist_left  = abs(vx - self._last_left_base_x)
             dist_right = abs(vx - self._last_right_base_x)
@@ -331,7 +366,7 @@ class TurnTracker:
             else:
                 decision = 'left' if dist_left < dist_right else 'right'
         else:
-            # Dual mod pozisyonu yok — bev_w/2 baz alinan basit karar
+            # Dual mod pozisyonu yok — BEV ekran yarisi bazli karar
             ref_x = bev_w / 2.0
             if vx > ref_x + CLASSIFY_HYSTERESIS:
                 decision = 'right'
@@ -352,22 +387,9 @@ class TurnTracker:
         if self._frames_since_dual < self.SINGLE_HARD_LOCK_FRAMES:
             return self._locked_side
 
-        # Viraj disinda da kisa bir sure kilidi koru.
-        if self._frames_since_dual < self.LOCK_TIMEOUT_FRAMES:
-            return self._locked_side
-
-        # Kilit suresi dolduktan sonra da ani flip'e izin verme:
-        # yeni tarafa gecmek icin ardarda birkac frame ayni karar gerekli.
-        if decision == self._locked_side:
-            self._switch_votes = 0
-            return self._locked_side
-
-        self._switch_votes += 1
-        if self._switch_votes < 3:
-            return self._locked_side
-
-        self._locked_side = decision
-        self._switch_votes = 0
+        # Tek seritteyken, dual moda geri donene kadar TARAFI DEGISTIRME !
+        # Duz yolda veya viraj cıkısında araba duzelirken "decision" algoritmasina gecip
+        # rengin atlamasi istenmeyen bir davranis uretir. Dual mod tek resetleme noktasidir.
         return self._locked_side
 
     @property
@@ -439,7 +461,6 @@ def create_lane_mask(warped, bright_thr):
     # Ince gurultuyu temizle
     k_open = np.ones((3, 3), np.uint8)
     binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open)
-
     # -- Kucuk gurultuleri sil (alan bazli filtre) --
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for cnt in contours:
@@ -517,10 +538,21 @@ class SlidingWindowTracker:
         self._last_right_x = None
         self._left_miss_count = 0
         self._right_miss_count = 0
+        self._left_raw_miss = 0   # EMA-sonrasi gercek miss (kesik serit boslugu sayaci)
+        self._right_raw_miss = 0
+        self._periodic_scan_counter = 0
+        self._single_mode_frames = 0  # Kac frame boyunca tek serit modundayiz
 
     def _pick_peak_near_expected(self, histogram, expected_x, max_delta):
         """Beklenen x etrafinda en yakin ve yeterince guclu peak'i sec.
-        Tek-taraf reacquire icin kullanilir."""
+        Tek-taraf reacquire icin kullanilir.
+
+        Once guclu local maximum (>PEAK_MIN_HEIGHT) ara.
+        Bulunamazsa: beklenen bolgenin argmaxini daha dusuk esikle dene.
+        Bu fallback KONUM KISITLIDIR — [ex-max_delta, ex+max_delta] penceresi
+        izlenen seritten en az (expected_width - max_delta) uzakta oldugu icin
+        izlenen seridi yanlis slota koyma riski yoktur.
+        """
         w = len(histogram)
         ex = int(np.clip(expected_x, 1, w - 2))
         best = None
@@ -535,9 +567,22 @@ class SlidingWindowTracker:
                     best = i
                     best_dist = d
                     best_h = histogram[i]
-        return best
+        if best is not None:
+            return best
 
-    def search(self, binary, build_viz=True):
+        # Fallback: viraj cikisinda kismi gorunen serit PEAK_MIN_HEIGHT altinda peak
+        # uretebilir. Beklenen bolgenin argmaxini cok daha dusuk esikle (MIN_PIX*2=60) dene.
+        # Pencere [ex-max_delta, ex+max_delta] — izlenen seritten guvenli uzaklikta.
+        lo = max(0, ex - max_delta)
+        hi = min(w, ex + max_delta + 1)
+        if hi > lo:
+            rel_idx = int(np.argmax(histogram[lo:hi]))
+            candidate = lo + rel_idx
+            if histogram[candidate] > MIN_PIX * 2:
+                return candidate
+        return None
+
+    def search(self, binary, build_viz=True, locked_side=None):
         """binary: BEV white mask
         Dondurur: (left_fit, right_fit, left_y_range, right_y_range, viz_img | None)
         left_fit/right_fit: np.poly1d veya None
@@ -581,11 +626,6 @@ class SlidingWindowTracker:
             lb_hist, rb_hist, lv_hist, rv_hist = self._find_lane_peaks(
                 histogram, midpoint)
 
-            # YENIDEN BULMA SARTI: IKI peak de gecerli + yeterli mesafe
-            both_valid = lv_hist and rv_hist
-            separation = rb_hist - lb_hist if both_valid else 0
-            safe_to_reacquire = both_valid and separation >= max(REACQ_MIN_SEPARATION, STRICT_PAIR_MIN_GAP_PX)
-
             # Son bilinen serit genisligi (tek taraf geri kazanimi icin beklenti)
             if self._last_left_x is not None and self._last_right_x is not None:
                 expected_width = int(np.clip(abs(self._last_right_x - self._last_left_x),
@@ -598,33 +638,29 @@ class SlidingWindowTracker:
                 left_base, left_valid = lb_hist, lv_hist
                 right_base, right_valid = rb_hist, rv_hist
             elif not use_prev_left and use_prev_right:
-                # SOL KAYIP — SADECE guvenli ise yeniden bul
-                if safe_to_reacquire:
-                    left_base = lb_hist
+                # SOL KAYIP — sag seridin solunda guclu peak ara.
+                # Arama penceresi: [0, right_base - STRICT_PAIR_MIN_GAP_PX]
+                # Bu kisit || ciftini (right_base'e yakin) otomatik dislar.
+                # argmax: viraj cikisinda serit beklenen konumdan uzakta da olsa bulunur.
+                search_right_limit = max(1, right_base - STRICT_PAIR_MIN_GAP_PX)
+                left_hist_slice = histogram[:search_right_limit]
+                if len(left_hist_slice) > 0 and left_hist_slice.max() > MIN_PIX * 2:
+                    left_base = int(np.argmax(left_hist_slice))
                     left_valid = True
                 else:
-                    expected_left = right_base - expected_width
-                    cand_left = self._pick_peak_near_expected(histogram, expected_left, REACQ_EXPECTED_MARGIN)
-                    if cand_left is not None and cand_left < right_base - STRICT_PAIR_MIN_GAP_PX:
-                        left_base = int(cand_left)
-                        left_valid = True
-                    else:
-                        left_valid = False  # DEVRE DISI — tek serit modu
-                        left_base = max(0, right_base - expected_width)
+                    left_valid = False
+                    left_base = max(0, right_base - expected_width)
+
             elif use_prev_left and not use_prev_right:
-                # SAG KAYIP — SADECE guvenli ise yeniden bul
-                if safe_to_reacquire:
-                    right_base = rb_hist
+                # SAG KAYIP — sol seridin saginda guclu peak ara.
+                search_left_limit = min(w, left_base + STRICT_PAIR_MIN_GAP_PX)
+                right_hist_slice = histogram[search_left_limit:]
+                if len(right_hist_slice) > 0 and right_hist_slice.max() > MIN_PIX * 2:
+                    right_base = int(search_left_limit + np.argmax(right_hist_slice))
                     right_valid = True
                 else:
-                    expected_right = left_base + expected_width
-                    cand_right = self._pick_peak_near_expected(histogram, expected_right, REACQ_EXPECTED_MARGIN)
-                    if cand_right is not None and cand_right > left_base + STRICT_PAIR_MIN_GAP_PX:
-                        right_base = int(cand_right)
-                        right_valid = True
-                    else:
-                        right_valid = False
-                        right_base = min(w - 1, left_base + expected_width)
+                    right_valid = False
+                    right_base = min(w - 1, left_base + expected_width)
 
         # SOL her zaman SOLDA olmali
         if left_valid and right_valid and left_base >= right_base:
@@ -737,9 +773,17 @@ class SlidingWindowTracker:
 
         # -- Yakinlik kontrolu: SERT KURAL --
         # Iki serit MIN_LANE_WIDTH_PX'den daha yakin OLAMAZ
+        # Reacquisition (yeni bulunan serit): sadece alt 3 nokta kontrol edilir.
+        # BEV tepesinde virajli polinomlar yaklasir → yeni bulunan serit yanlis pozitifle dusurulur.
+        # Mevcut cift izleme: tam 5 nokta → || cift algilama korumasi devam eder.
+        was_reacquired = (not use_prev_left and left_fit is not None) or \
+                         (not use_prev_right and right_fit is not None)
         if left_fit is not None and right_fit is not None:
-            y_check_points = [int(h * 0.15), int(h * 0.35), int(h * 0.55),
-                              int(h * 0.75), h - 1]
+            if was_reacquired:
+                y_check_points = [int(h * 0.55), int(h * 0.75), h - 1]
+            else:
+                y_check_points = [int(h * 0.15), int(h * 0.35), int(h * 0.55),
+                                  int(h * 0.75), h - 1]
             overlap = False
             for y_pt in y_check_points:
                 gap = right_fit(y_pt) - left_fit(y_pt)
@@ -747,11 +791,17 @@ class SlidingWindowTracker:
                     overlap = True
                     break
             if overlap:
-                # Daha az pikseli olan fit'i sil
-                if len(left_lane_inds) >= len(right_lane_inds):
+                # Kilitli tarafi hayatta tut
+                locked = locked_side
+                if locked == 'left':
                     right_fit = None
-                else:
+                elif locked == 'right':
                     left_fit = None
+                else:
+                    if len(left_lane_inds) >= len(right_lane_inds):
+                        right_fit = None
+                    else:
+                        left_fit = None
 
         # -- Genislik kontrolu: SERT KURAL --
         # || + dis sag gibi yanlis cifti onlemek icin maksimum genislik siniri
@@ -759,20 +809,44 @@ class SlidingWindowTracker:
             y_mid = int(h * 0.55)
             gap_mid = right_fit(y_mid) - left_fit(y_mid)
             if gap_mid > MAX_LANE_WIDTH_PX:
-                # Yanlis cift — az pikseli olan fit'i sil
-                if len(left_lane_inds) >= len(right_lane_inds):
+                # Kilitli tarafi hayatta tut
+                locked = locked_side
+                if locked == 'left':
                     right_fit = None
-                else:
+                elif locked == 'right':
                     left_fit = None
+                else:
+                    if len(left_lane_inds) >= len(right_lane_inds):
+                        right_fit = None
+                    else:
+                        left_fit = None
 
         # ============================================================
         # POLINOM STABILIZASYONU (EMA)
         # ============================================================
         is_single = (left_fit is None) != (right_fit is None)
-        alpha = 0.88 if is_single else POLY_ALPHA   # 0.92 -> 0.88: single mode da hizlandirildi
+        alpha = 0.88 if is_single else POLY_ALPHA
 
         left_fit  = self._smooth_fit(left_fit,  self._left_fit,  alpha)
         right_fit = self._smooth_fit(right_fit, self._right_fit, alpha)
+
+        # -- | Serit tipi toleransi: kesik cizgi bosluklarinda fit koru --
+        # Kesik serit (dashed) aralarinda piksel olmayan bosluklar uretir.
+        # Bu boslukta fit=None olur → tek serit moduna dusuler → sallanma baslar.
+        # Cozum: EMA'nin None dondurmesinden ONCE ham miss sayaci tutulur;
+        # FIT_MAX_MISS_FRAMES kare icinde eski fit korunur (sliding window zaten
+        # onceki pozisyonda devam ettigi icin sonraki kare dash'i yakalar).
+        left_lost  = (left_fit is None)
+        right_lost = (right_fit is None)
+
+        if left_lost and self._left_fit is not None and self._left_raw_miss < FIT_MAX_MISS_FRAMES:
+            left_fit = self._left_fit   # Bosluk: onceki fit'i koru
+        if right_lost and self._right_fit is not None and self._right_raw_miss < FIT_MAX_MISS_FRAMES:
+            right_fit = self._right_fit  # Bosluk: onceki fit'i koru
+
+        # Ham miss sayaclarini guncelle (preservation'dan etkilenmez)
+        self._left_raw_miss  = (self._left_raw_miss  + 1) if left_lost  else 0
+        self._right_raw_miss = (self._right_raw_miss + 1) if right_lost else 0
 
         self._left_fit  = left_fit
         self._right_fit = right_fit
@@ -793,6 +867,29 @@ class SlidingWindowTracker:
             self._right_miss_count += 1
             if self._right_miss_count > 5:
                 self._last_right_x = None
+
+        # -- Periyodik sol serit taramasi --
+        # Iki fit de Non-None ise histogram hicbir zaman calismaz.
+        # Viraj cikisinda sahte dual (center||+sag serit) durumunda gercek
+        # sol serit hic algilanamaz. Her 20 frame'de bir sol taraf taranir:
+        # mevcut sol fitin solunda guclu bir peak varsa sol fit sifirlanir
+        # → sonraki frame histogram ile dogru serit yeniden bulunur.
+        self._periodic_scan_counter += 1
+        if (self._left_fit is not None and self._right_fit is not None and
+                self._periodic_scan_counter >= 20 and
+                self._left_raw_miss == 0 and self._right_raw_miss == 0):
+            self._periodic_scan_counter = 0
+            hist_region = binary[h // 2:, :]
+            histogram_p = np.sum(hist_region, axis=0).astype(np.float64)
+            if HIST_SMOOTH > 1:
+                kern = np.ones(HIST_SMOOTH) / HIST_SMOOTH
+                histogram_p = np.convolve(histogram_p, kern, mode='same')
+            current_lx = int(np.clip(self._left_fit(h - 1), 0, w - 1))
+            # Sadece sol fitin solunda yeterince uzak bir bolgeye bak
+            check_up_to = max(0, current_lx - STRICT_PAIR_MIN_GAP_PX)
+            if check_up_to > 10 and histogram_p[:check_up_to].max() > PEAK_MIN_HEIGHT:
+                # Mevcut sol fitten daha solda guclu bir serit var → sol yeniden tara
+                self._left_fit = None
 
         # ============================================================
         # VIZUALIZASYON
@@ -882,6 +979,28 @@ class SlidingWindowTracker:
                 cluster_centers.append((wx, mh))
 
         # ==============================================================
+        # SINGLE-MODE || GUARD — peak seviyesinde || yarilasma koruması
+        # ==============================================================
+        # Tam olarak bir taraf biliniyorsa (single mod) ve birden fazla
+        # cluster bilinen referansa YAKIN ciktiysa → bunlar || yarisi.
+        # Gercek ikinci serit referanstan UZAKTA cikacagi icin korunur.
+        one_side_known = ((self._last_left_x is not None) !=
+                          (self._last_right_x is not None))
+        if one_side_known and len(cluster_centers) >= 2:
+            known_x = (self._last_left_x if self._last_left_x is not None
+                       else self._last_right_x)
+            near = [(x, h) for x, h in cluster_centers
+                    if abs(x - known_x) <= SINGLE_MODE_CLUSTER_EXPAND]
+            far  = [(x, h) for x, h in cluster_centers
+                    if abs(x - known_x) > SINGLE_MODE_CLUSTER_EXPAND]
+            if len(near) >= 2:
+                # Birden fazla peak ayni referansa yakin → || yarilarini birlestir
+                total_w = sum(p[1] for p in near)
+                wx = int(sum(p[0] * p[1] for p in near) / total_w)
+                mh = max(p[1] for p in near)
+                cluster_centers = [(wx, mh)] + far
+
+        # ==============================================================
         # ONCELIK 1: ONCEKI POZISYONLARA YAKINLIK ILE PEAK SECIMI
         # ==============================================================
         # NEDEN: | || | yapisinda || cizgisi BEV midpoint (300) etrafinda
@@ -904,21 +1023,52 @@ class SlidingWindowTracker:
                 return left_base, right_base, left_valid, right_valid
 
         # ==============================================================
-        # FALLBACK: Midpoint bazli sol/sag ayirimi (ilk frame veya pozisyon bilinmiyor)
+        # FALLBACK 1: Tek Cluster ve Tek Bilinen Konum (Ani sicrama korumasi)
         # ==============================================================
-        left_candidates  = [(x, h) for x, h in cluster_centers if x < midpoint]
-        right_candidates = [(x, h) for x, h in cluster_centers if x >= midpoint]
+        # Eger viraj cikisinda arac aniden dogrulursa serit 80px'den fazla kayabilir.
+        # Bu durumda asagidaki dynamic_midpoint'i asip yanlis tarafa dusebilir.
+        if len(cluster_centers) == 1:
+            p = cluster_centers[0]
+            if self._last_right_x is not None and self._last_left_x is None:
+                # Tek bilinen sag serit, tek bulgu var -> SAG SERITTI!
+                rb = p[0]
+                # Solu nominal olarak uydur (kullanilmayacak ama format geregi veriliyor)
+                lb = max(0, rb - DEFAULT_LANE_WIDTH_PX)
+                return lb, rb, False, p[1] > MIN_PIX * 2
+            elif self._last_left_x is not None and self._last_right_x is None:
+                # Tek bilinen sol serit, tek bulgu var -> SOL SERITTI!
+                lb = p[0]
+                rb = min(w - 1, lb + DEFAULT_LANE_WIDTH_PX)
+                return lb, rb, p[1] > MIN_PIX * 2, False
+
+        # ==============================================================
+        # FALLBACK 2: Dinamik midpoint bazli sol/sag ayirimi
+        # ==============================================================
+        # Statik midpoint (300) virajlarda seridin flip yapmasina neden olur.
+        # Son bilinen pozisyona gore ortayi dinamik belirle.
+        dynamic_midpoint = midpoint
+        if self._last_left_x is not None and self._last_right_x is not None:
+            dynamic_midpoint = (self._last_left_x + self._last_right_x) / 2.0
+        elif self._last_left_x is not None:
+            dynamic_midpoint = self._last_left_x + DEFAULT_LANE_WIDTH_PX / 1.5  # 80 degil 106 px tolerans
+        elif self._last_right_x is not None:
+            dynamic_midpoint = self._last_right_x - DEFAULT_LANE_WIDTH_PX / 1.5
+
+        d_mid_int = int(np.clip(dynamic_midpoint, 1, w - 2))
+
+        left_candidates  = [(x, h) for x, h in cluster_centers if x < dynamic_midpoint]
+        right_candidates = [(x, h) for x, h in cluster_centers if x >= dynamic_midpoint]
 
         if left_candidates:
             left_pick = max(left_candidates, key=lambda p: p[0])
         else:
-            lb = int(np.argmax(histogram[:midpoint]))
+            lb = int(np.argmax(histogram[:d_mid_int]))
             left_pick = (lb, histogram[lb])
 
         if right_candidates:
             right_pick = min(right_candidates, key=lambda p: p[0])
         else:
-            rb = int(np.argmax(histogram[midpoint:])) + midpoint
+            rb = int(np.argmax(histogram[d_mid_int:])) + d_mid_int
             right_pick = (rb, histogram[rb])
 
         if abs(right_pick[0] - left_pick[0]) < MIN_LANE_WIDTH_PX:
@@ -1056,9 +1206,10 @@ class LaneMemory:
         Dondurur: (error_norm, has_left, has_right)
         error_norm: -1.0 .. +1.0"""
         h = bev_h
-        # Arac ortadayken serit merkezi BEV'de ~bev_w/2 etrafinda gorunuyor.
-        # BEV_CAR_X=326 kullanmak TERS bias yaratiyordu.
-        center_x = bev_w / 2.0
+        # Arac BEV'de BEV_CAR_X konumunda gorununyor (kamera merkezi perspektif
+        # donusumu sonrasi). Bunu merkez olarak kullanmazsak sabit bias olusur:
+        # bev_w/2=300 ile BEV_CAR_X=326 arasindaki 26px fark suregli sag yaslama yaratir.
+        center_x = BEV_CAR_X
         has_left = left_fit is not None
         has_right = right_fit is not None
 
@@ -1090,11 +1241,10 @@ class LaneMemory:
             # TurnTracker'i iki-seritli veriyle guncelle
             self._turn.update_dual(left_fit, right_fit, h, bev_w)
 
-            # === FAR-POINT LOOKAHEAD: virajlarda gec donus engellenir ===
-            # Eskiden dual mode SADECE y_near (h*0.75) kullaniyordu → viraj
-            # ortasinda anca tepki veriyordu. Single mode'daki gibi y_far
-            # noktasini da hesaba katarak erken tepki saglariz.
-            y_far = int(h * 0.25)   # 0.20->0.25: cok uzak bakis erken donus yapiyor, orta mesafe
+            # === FAR-POINT LOOKAHEAD: virajlarda hafif ileri bakis ===
+            # y_far=h*0.60 (BEV'in %60 yukari) — ufku genislettigimiz icin fiziksel hiza ayni kalsin.
+            # curve_boost dual mode'da kaldirildi: sadece far_weight yumusak agirlik yeter.
+            y_far = int(h * 0.60)
             lx_f = left_fit(y_far)
             rx_f = right_fit(y_far)
 
@@ -1104,17 +1254,11 @@ class LaneMemory:
             error_n = (lane_center_n - center_x) / (bev_w / 2.0)
             error_f = (lane_center_f - center_x) / (bev_w / 2.0)
 
-            # Viraj derinlestikce uzak noktaya daha cok agirlik ver
+            # Viraj derinlestikce uzak noktaya hafifce daha cok agirlik ver
+            # Max 0.40 (viraj) — daha fazlasi erken donis yapiyordu
             curve_strength = min(1.0, abs(self._turn.curvature) / 0.002)
-            far_weight = 0.25 + 0.55 * curve_strength  # 0.25 (duz) .. 0.80 (viraj)
+            far_weight = 0.20 + 0.20 * curve_strength  # 0.20 (duz) .. 0.40 (viraj)
             error = far_weight * error_f + (1.0 - far_weight) * error_n
-
-            # Polinom egriliginden ek viraj destegi (feed-forward)
-            # Dual mode'a single mode'daki curve_boost mantigi getirildi.
-            if abs(self._turn.curvature) > TURN_CURVATURE_THR:
-                curve_boost = np.sign(self._turn.curvature) * min(
-                    0.35, abs(self._turn.curvature) * 50)  # cap 0.55->0.35, mult 100->50
-                error += curve_boost
 
             self._no_left = 0
             self._no_right = 0
@@ -1173,7 +1317,7 @@ class LaneMemory:
 
         # Yakin ve uzak olcum noktalari (seridin gorunen araligiyla sinirli)
         y_near = min(int(h * 0.80), y_max)
-        y_far  = max(int(h * 0.25), y_min)  # 0.20->0.25: orta mesafe bakis
+        y_far  = max(int(h * 0.60), y_min)  # 0.40->0.60: ufuq acildigi icin erken yonelmeyi engeller
 
         vx_near = visible_fit(y_near)
         vx_far  = visible_fit(y_far)
@@ -1193,14 +1337,14 @@ class LaneMemory:
 
         # Viraj derinlestikce uzak noktaya daha cok agirlik ver
         curve_strength = min(1.0, abs(self._turn.curvature) / 0.002)
-        far_weight = 0.25 + 0.55 * curve_strength  # 0.25 (duz) .. 0.80 (viraj)
+        far_weight = 0.25 + 0.35 * curve_strength  # 0.25 (duz) .. 0.60 (viraj - agresif agirlik azaltildi)
         error = far_weight * error_far + (1.0 - far_weight) * error_near
 
         # Polinom egriliginden ek viraj destegi
-        # cap 0.35->0.50, carpan 33->100: tipik egrilik (0.002-0.004) icin anlamli boost saglar
+        # Sistem artik dogru serit atamasi yaptigi icin asiri boosta gerek kalmadi (erken donus engellendi)
         if abs(self._turn.curvature) > TURN_CURVATURE_THR:
             curve_boost = np.sign(self._turn.curvature) * min(
-                0.50, abs(self._turn.curvature) * SINGLE_LANE_CURVE_GAIN * 100)
+                0.25, abs(self._turn.curvature) * SINGLE_LANE_CURVE_GAIN * 40)
             error += curve_boost
 
         # Tek seritte virajdan cikmadan donusu korumak icin
@@ -1213,10 +1357,10 @@ class LaneMemory:
 
             mem_steer = mem_dir * SINGLE_LANE_BASE_STEER
             mem_steer += mem_dir * min(
-                0.30, abs(self._turn.curvature) * SINGLE_LANE_CURVE_GAIN * 80)
+                0.15, abs(self._turn.curvature) * SINGLE_LANE_CURVE_GAIN * 30)
 
             age = min(1.0, self._turn.frames_since_dual / float(max(1, TURN_MEMORY_FRAMES)))
-            mem_weight = 0.50 + 0.20 * age   # 0.50 -> 0.70
+            mem_weight = 0.25 + 0.15 * age   # 0.40 -> 0.55 yerine 0.25 -> 0.40 (hafiza baskisi azaltildi)
             error = (1.0 - mem_weight) * error + mem_weight * mem_steer
 
         error = max(-1.0, min(1.0, error))
@@ -1276,21 +1420,18 @@ def draw_camera_overlay(frame, left_fit, right_fit, steering,
             # Aracin mevcut pozisyonundan hedefe yon cizgisi (Kirmizi)
             cv2.line(overlay_bev, (BEV_W // 2, BEV_H), track_center, (0, 0, 255), 3)
 
+        # Polyline cizimi: Python-level for-loop yerine tek vektorize cagri.
+        # 360 iterasyon × 2 serit → 2 cv2.polylines cagrisina indi (dual fps ~14→22+).
+        py_int = plot_y.astype(np.int32)
         if left_fit is not None:
-            lx = np.clip(left_fit(plot_y), 0, BEV_W - 1).astype(int)
-            for i in range(len(plot_y) - 1):
-                cv2.line(overlay_bev,
-                         (lx[i], int(plot_y[i])),
-                         (lx[i+1], int(plot_y[i+1])),
-                         (255, 80, 0), 3)
+            lx = np.clip(left_fit(plot_y), 0, BEV_W - 1).astype(np.int32)
+            pts_left = np.column_stack((lx, py_int)).reshape(-1, 1, 2)
+            cv2.polylines(overlay_bev, [pts_left], False, (255, 80, 0), 3)
 
         if right_fit is not None:
-            rx = np.clip(right_fit(plot_y), 0, BEV_W - 1).astype(int)
-            for i in range(len(plot_y) - 1):
-                cv2.line(overlay_bev,
-                         (rx[i], int(plot_y[i])),
-                         (rx[i+1], int(plot_y[i+1])),
-                         (0, 80, 255), 3)
+            rx = np.clip(right_fit(plot_y), 0, BEV_W - 1).astype(np.int32)
+            pts_right = np.column_stack((rx, py_int)).reshape(-1, 1, 2)
+            cv2.polylines(overlay_bev, [pts_right], False, (0, 80, 255), 3)
 
         # BEV overlay'i orijinal perspektife geri cevir
         unwarped = bev_unwarp(overlay_bev, (proc_w, proc_h))
@@ -1346,6 +1487,10 @@ def main():
     fps_t0        = time.monotonic()
     fps_val       = 0.0
 
+    # -- Persistent Correction Amplifier (PCA) state --
+    pca_same_dir_count = 0   # ayni yon + kucuk sinyal kac frame surer
+    pca_gain           = 1.0 # mevcut carpan
+
     try:
         motors = MotorController()
         motors.steering.center()
@@ -1377,7 +1522,7 @@ def main():
     else:
         if not HAS_PICAMERA2:
             print("[HATA] Picamera2 bulunamadi!"); sys.exit(1)
-        cam = Picamera2()
+        cam = Picamera2(camera_num=0)
         cam.configure(cam.create_video_configuration(
             main={"size": (CAM_W, CAM_H), "format": "RGB888"},
             buffer_count=2,
@@ -1459,7 +1604,9 @@ def main():
             crossing_active = crossing_cooldown > 0
 
             # 3) Sliding window ile serit takibi
-            left_fit, right_fit, left_y_range, right_y_range, viz_bev = sw_tracker.search(mask, build_viz=do_viz)
+            locked = turn_tracker._locked_side
+            left_fit, right_fit, left_y_range, right_y_range, viz_bev = sw_tracker.search(
+                mask, build_viz=do_viz, locked_side=locked)
 
             # 4) Merkez hatasi hesapla (dynamic offset + || duzeltmesi)
             raw_error, has_left, has_right = lane_mem.compute_error(
@@ -1494,8 +1641,33 @@ def main():
 
             steering = pid.update(error)
 
+            # -- Persistent Correction Amplifier (PCA) --
+            # Kucuk ama surekli ayni yonde steering var → kademeli guclendir
+            if abs(steering) > 0 and abs(steering) < PCA_SMALL_STEER_THR and any_line:
+                steer_dir = 1 if steering > 0 else -1
+                prev_dir  = 1 if last_error > 0 else -1
+                if steer_dir == prev_dir:
+                    pca_same_dir_count += 1
+                else:
+                    pca_same_dir_count = 0
+                    pca_gain = 1.0
+            else:
+                # Buyuk sinyal veya yon degisti → sifirla
+                pca_same_dir_count = 0
+                pca_gain = 1.0
+
+            if pca_same_dir_count >= PCA_SAME_DIR_FRAMES:
+                # Kademeli artis: PCA_SAME_DIR_FRAMES'den PCA_GAIN_RAMP_FRAMES frame'de max'a ulaş
+                ramp_progress = min(1.0,
+                    (pca_same_dir_count - PCA_SAME_DIR_FRAMES) / float(PCA_GAIN_RAMP_FRAMES))
+                pca_gain = 1.0 + (PCA_MAX_GAIN - 1.0) * ramp_progress
+                steering = max(-1.0, min(1.0, steering * pca_gain))
+
             # -- Adaptif hiz --
             current_speed = BASE_SPEED * (1.0 - SPEED_CURVE_FACTOR * abs(steering))
+            # Tek serit modunda (viraj) ek hiz kisitlamasi
+            if not (has_left and has_right):
+                current_speed *= SPEED_SINGLE_FACTOR
             current_speed = max(MIN_SPEED, current_speed)
 
             if no_line_count > NO_LINE_TIMEOUT:
