@@ -1,0 +1,6 @@
+# Raspberry Pi 5 — install picamera2, opencv and lgpio from apt (see README)
+numpy
+gpiozero
+rpi-hardware-pwm
+ultralytics
+pybind11
