@@ -10,6 +10,21 @@ April 2026. I also collected, labelled and trained the datasets for all three mo
 
 > 🇹🇷 Türkçe özet en altta.
 
+<p align="center">
+  <img src="img1.png" width="32%" alt="The car driving on the test track">
+  <img src="img2.png" width="32%" alt="The car driving on the test track">
+  <img src="img3.png" width="32%" alt="The car driving on the test track">
+</p>
+<p align="center"><em>The car driving on the test track</em></p>
+
+<p align="center">
+  <img src="img4.png" width="70%" alt="Close-up of the car's electronics">
+</p>
+<p align="center"><em>Close-up of the electronics</em></p>
+
+> **Note:** Later in the project, the car's body and the placement of the circuits were
+> redesigned from scratch.
+
 ---
 
 ## The track
@@ -159,5 +174,6 @@ GStreamer plugins (`hailo-all`). Some scripts still contain absolute paths from 
 araç. Raspberry Pi 5 + Hailo-8L üzerinde çalışıyor. Önce kendi veri setimle eğittiğim
 YOLOv8-seg şerit modelini Hailo-8L'de çalıştırdım, ardından tabela/ışık/engel için ikinci bir
 YOLOv8-seg modeli eğittim. Yarışmada şerit takibi için OpenCV tabanlı kuşbakışı + sliding
-window + PID sistemini kullandım. Veri setlerini kendim topladım ve etiketledim, ancak Roboflow
+window + PID sistemini kullandım. Projenin ilerleyen aşamalarında aracın gövdesi ve devrelerin
+yerleşimi sıfırdan yeniden tasarlandı. Veri setlerini kendim topladım ve etiketledim, ancak Roboflow
 hesabına erişimimi kaybettiğim için repoda bulunmuyor.
