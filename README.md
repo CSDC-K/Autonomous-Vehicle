@@ -56,10 +56,11 @@ The commit history follows the real timeline of the project (see the note at the
 | When | What happened | Files |
 |---|---|---|
 | **Dec 2025** | First tests on the Hailo-8L: a GStreamer + `hailonet` pipeline with a ready-made pose-estimation model. | `experiments/hailo_bringup/gemini_calisan.txt` |
-| **Feb 2026** | Trained my own **YOLOv8-seg lane model** (classes `line_dashed`, `line_solid`, 416×416) and compiled it to `best.hef` for the Hailo-8L. Then made the NPU output usable: checking the output tensors, finding the quantization parameters and decoding the segmentation masks by hand. | `best.hef`, `labels.json`, `experiments/hailo_bringup/*` |
+| **Feb 2026** | Collected and labelled the **otonom_18th_int** dataset on our test track and trained my own **YOLOv8-seg lane model** (classes `line_dashed`, `line_solid`, 416×416) and compiled it to `best.hef` for the Hailo-8L. Then made the NPU output usable: checking the output tensors, finding the quantization parameters and decoding the segmentation masks by hand. | `best.hef`, `labels.json`, `experiments/hailo_bringup/*` |
 | **Mar 2026** | Built the first full driving app: Hailo segmentation masks → lane centre → **PD steering** (`LaneFollower`). Wrote motor/servo tests and a **C++ (pybind11) module** to speed up lane processing on the Pi. | `hailo_app.py`, `hailo_app_hef.py`, `lane_follower.py`, `config.py`, `lane_native/`, `hardware_tests/` |
-| **Apr 2026** | Trained a second **YOLOv8-seg model for road signs and obstacles** (dataset v3, then v4 with traffic lights). | `best.pt`, `road_model.pt`, `road_sign_test.py` |
+| **Apr 2026** | Built the **road_signs** dataset and trained a second **YOLOv8-seg model for road signs and obstacles** (dataset v3, then v4 with traffic lights). | `best.pt`, `road_model.pt`, `road_sign_test.py` |
 | **Apr 2026** | **Switched lane following to classic OpenCV** — bird's-eye view + sliding windows + PID. Added a live calibration tool and tuned everything for the competition. This is the version the car used in the competition. | `lane_opencv.py`, `bev_calibrator.py`, `motor_control.py` |
+| **May 2026** | Recorded footage on the **real competition track**, labelled it as a new dataset (FAST_O_M18: left/right lane) and trained a YOLOv11-seg model on it in Roboflow. | [FAST_O_M18 dataset](https://universe.roboflow.com/otonom-cc19j/fast_o_m18/dataset/2) |
 
 ---
 
@@ -115,8 +116,32 @@ Turkish class names used in the models: `cikmaz_yol`, `hemzemin`, `park`, `sari_
 On its own validation split, `road_model.pt` reached mask mAP50 ≈ 0.99. The validation images
 come from the same track, so real-world accuracy is lower than this number.
 
-**Datasets:** I photographed and labelled all images myself in Roboflow. The dataset files are
-not in this repository because I lost access to the Roboflow account they were stored in.
+---
+
+## Datasets
+
+I collected and labelled all three datasets myself in Roboflow. The full datasets are public on
+Roboflow Universe and can be downloaded in YOLOv8 and other formats:
+
+| Dataset | What it contains | Classes | Images | Link |
+|---|---|---|---|---|
+| **otonom_18th_int** (v5, Feb 2026) | Our own test track | `line_dashed`, `line_solid` | 744 labelled (1,188 in v5 with augmentation) | [Roboflow Universe](https://universe.roboflow.com/otonom-cc19j/otonom_18th_int/dataset/5) |
+| **road_signs** (v4, Apr 2026) | The signs, traffic lights and boxes we built for the track | 11 classes (see above) | 683 labelled (1,693 in v4 with augmentation) | [Roboflow Universe](https://universe.roboflow.com/otonom-cc19j/road_signs-k2gji/dataset/4) |
+| **FAST_O_M18** (v2, May 2026) | Real footage from the competition track | `left_lane`, `right_lane` | 311 labelled (785 in v2 with augmentation) | [Roboflow Universe](https://universe.roboflow.com/otonom-cc19j/fast_o_m18/dataset/2) |
+
+Sample images from each dataset with their labels drawn on (validation/test images, no augmentation):
+
+**otonom_18th_int — our test track (lane lines)**
+
+![otonom_18th_int samples](docs/datasets/otonom_18th_int.jpg)
+
+**road_signs — signs, traffic lights and obstacles**
+
+![road_signs samples](docs/datasets/road_signs.jpg)
+
+**FAST_O_M18 — the real competition track**
+
+![FAST_O_M18 samples](docs/datasets/fast_o_m18.jpg)
 
 ---
 
@@ -136,6 +161,7 @@ experiments/            Hailo-8L bring-up and debugging scripts
 hardware_tests/         servo and DC motor tests
 tools/testvid.py        generates a simple synthetic overtaking video
 photo/, video/          AI-generated test images/video used to try the sign model
+docs/datasets/          labelled sample images from the three datasets
 ```
 
 ## Running it
@@ -175,5 +201,5 @@ araç. Raspberry Pi 5 + Hailo-8L üzerinde çalışıyor. Önce kendi veri setim
 YOLOv8-seg şerit modelini Hailo-8L'de çalıştırdım, ardından tabela/ışık/engel için ikinci bir
 YOLOv8-seg modeli eğittim. Yarışmada şerit takibi için OpenCV tabanlı kuşbakışı + sliding
 window + PID sistemini kullandım. Projenin ilerleyen aşamalarında aracın gövdesi ve devrelerin
-yerleşimi sıfırdan yeniden tasarlandı. Veri setlerini kendim topladım ve etiketledim, ancak Roboflow
-hesabına erişimimi kaybettiğim için repoda bulunmuyor.
+yerleşimi sıfırdan yeniden tasarlandı. Üç veri setini de (test pistimiz, tabelalar ve gerçek yarışma
+pisti) kendim topladım ve etiketledim; hepsi Roboflow Universe'de herkese açık (linkler yukarıda).
