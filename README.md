@@ -27,6 +27,17 @@ April 2026. I also collected, labelled and trained the datasets for all three mo
 
 ---
 
+## The competition
+
+The 18th International MEB Robot Competition took place in **Antalya, 6–8 May 2026**. In the
+Autonomous Vehicle category the car must fit in a 20 × 30 × 25 cm box, may use **only cameras**
+(no other sensors) and must run software written by the team. On one 4-minute lap it has to start
+at a traffic light, stop at pedestrian and level crossings, pass a speed bump, overtake a vehicle,
+avoid a dead end and park in the red parking area.
+
+The official category guide (English and Turkish) and a rules summary are in
+[`docs/competition/`](docs/competition/).
+
 ## The track
 
 ```
@@ -162,6 +173,7 @@ hardware_tests/         servo and DC motor tests
 tools/testvid.py        generates a simple synthetic overtaking video
 photo/, video/          AI-generated test images/video used to try the sign model
 docs/datasets/          labelled sample images from the three datasets
+docs/competition/       official MEB category guide (EN + TR) and rules summary
 ```
 
 ## Running it
